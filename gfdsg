@@ -1,0 +1,5 @@
+!! python -m pip install flask
+!!_pycache
+!! venv
+!! app = Flask(__name__)
+!! @app.route("/")
