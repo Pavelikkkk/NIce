@@ -69,6 +69,20 @@ def get_mod_packs():
 def create_mod_pack():
     data = request.json
     new_mod_pack = ModPack(name=data['name'])
+    
+    if 'mods' in data:
+        for mod_item in data['mods']:
+            if isinstance(mod_item, dict) and 'id' in mod_item:
+                mod_id = mod_item['id']
+                try:
+                    mod_id = int(mod_id)  # Проверяем, что mod_id является целым числом
+                    mod = Mod.query.get(mod_id)
+                    if mod:
+                        new_mod_pack.mods.append(mod)
+                except ValueError:
+                    # Обрабатываем случай, если mod_id не является целым числом
+                    continue
+    
     db.session.add(new_mod_pack)
     db.session.commit()
     return jsonify(mod_pack_schema.dump(new_mod_pack)), 201
@@ -78,8 +92,24 @@ def create_mod_pack():
 def update_mod_pack(mod_pack_id):
     data = request.json
     mod_pack = ModPack.query.get_or_404(mod_pack_id)
+    
     if 'name' in data:
         mod_pack.name = data['name']
+    
+    if 'mods' in data:
+        mod_pack.mods = []  # Очищаем текущие моды
+        for mod_item in data['mods']:
+            if isinstance(mod_item, dict) and 'id' in mod_item:
+                mod_id = mod_item['id']
+                try:
+                    mod_id = int(mod_id)  # Проверяем, что mod_id является целым числом
+                    mod = Mod.query.get(mod_id)
+                    if mod:
+                        mod_pack.mods.append(mod)
+                except ValueError:
+                    # Обрабатываем случай, если mod_id не является целым числом
+                    continue
+    
     db.session.commit()
     return jsonify(mod_pack_schema.dump(mod_pack))
 
@@ -91,31 +121,7 @@ def delete_mod_pack(mod_pack_id):
     db.session.commit()
     return '', 204
 
-@bp.route('/mod-pack-associations', methods=['GET'])
-@auth.login_required
-def get_mod_pack_associations():
-    mod_pack_associations = ModPackAssociation.query.all()
-    return jsonify(mod_pack_associations_schema.dump(mod_pack_associations))
-
-@bp.route('/mod-pack-associations', methods=['POST'])
-@auth.login_required
-def create_mod_pack_association():
-    data = request.json
-    new_mod_pack_association = ModPackAssociation(mod_pack_id=data['mod_pack_id'], mod_id=data['mod_id'])
-    db.session.add(new_mod_pack_association)
-    db.session.commit()
-    return jsonify(mod_pack_association_schema.dump(new_mod_pack_association)), 201
-
-@bp.route('/mod-pack-associations/<int:mod_pack_id>/<int:mod_id>', methods=['DELETE'])
-@auth.login_required
-def delete_mod_pack_association(mod_pack_id, mod_id):
-    association = ModPackAssociation.query.filter_by(mod_pack_id=mod_pack_id, mod_id=mod_id).first_or_404()
-    db.session.delete(association)
-    db.session.commit()
-    return '', 204
-
 @bp.route('/worlds', methods=['GET'])
-@auth.login_required
 def get_worlds():
     worlds = World.query.all()
     return jsonify(worlds_schema.dump(worlds))
@@ -128,7 +134,7 @@ def create_world():
         name=data['name'],
         mod_pack_id=data.get('mod_pack_id'),
         description=data.get('description'),
-        created_at=data.get('created_at')
+        created_at = data.get('created_at', '')
     )
     db.session.add(new_world)
     db.session.commit()
@@ -159,7 +165,6 @@ def delete_world(world_id):
     return '', 204
 
 @bp.route('/players', methods=['GET'])
-@auth.login_required
 def get_players():
     players = Player.query.all()
     return jsonify(players_schema.dump(players))
@@ -172,7 +177,7 @@ def create_player():
         username=data['username'],
         world_id=data['world_id'],
         email=data.get('email'),
-        join_date=data.get('join_date')
+        join_date=data.get('join_date', '')
     )
     db.session.add(new_player)
     db.session.commit()
@@ -203,7 +208,6 @@ def delete_player(player_id):
     return '', 204
 
 @bp.route('/privileges', methods=['GET'])
-@auth.login_required
 def get_privileges():
     privileges = Privilege.query.all()
     return jsonify(privileges_schema.dump(privileges))
@@ -246,7 +250,6 @@ def delete_privilege(privilege_id):
 
 
 @bp.route('/players-with-privilege-count', methods=['GET'])
-@auth.login_required
 def get_players_with_privilege_count():
     players = db.session.query(Player, db.func.count(Privilege.id).label('privilege_count')) \
                         .outerjoin(Privilege) \
@@ -257,7 +260,6 @@ def get_players_with_privilege_count():
 
 
 @bp.route('/worlds-with-player-count', methods=['GET'])
-@auth.login_required
 def get_worlds_with_player_count():
     worlds = db.session.query(World, db.func.count(Player.id).label('player_count')) \
                        .outerjoin(Player) \
@@ -268,7 +270,6 @@ def get_worlds_with_player_count():
 
 
 @bp.route('/modpacks-with-mod-count', methods=['GET'])
-@auth.login_required
 def get_modpacks_with_mod_count():
     modpacks = db.session.query(ModPack, db.func.count(ModPackAssociation.mod_id).label('mod_count')) \
                          .outerjoin(ModPackAssociation) \
@@ -277,14 +278,32 @@ def get_modpacks_with_mod_count():
     result = [{**mod_pack_schema.dump(modpack), 'mod_count': mod_count} for modpack, mod_count in modpacks]
     return jsonify(result)
 
+@bp.route('/worlds/<int:world_id>/players', methods=['GET'])
+def get_players_in_world(world_id):
+    world = World.query.get_or_404(world_id)
+    players = world.players
+    return jsonify(players_schema.dump(players)), 200
 
-@bp.route('/worlds-with-modpack-info', methods=['GET'])
-@auth.login_required
-def get_worlds_with_modpack_info():
-    worlds = db.session.query(World, ModPack, db.func.count(ModPackAssociation.mod_id).label('mod_count')) \
-                       .outerjoin(ModPack) \
-                       .outerjoin(ModPackAssociation) \
-                       .group_by(World.id, ModPack.id) \
-                       .all()
-    result = [{**world_schema.dump(world), 'modpack': mod_pack_schema.dump(modpack), 'mod_count': mod_count} for world, modpack, mod_count in worlds]
-    return jsonify(result)
+@bp.route('/modpacks/<int:modpack_id>/add_mod/<int:mod_id>', methods=['POST'])
+def add_mod_to_modpack(modpack_id, mod_id):
+    modpack = ModPack.query.get_or_404(modpack_id)
+    mod = Mod.query.get_or_404(mod_id)
+    modpack.mods.append(mod)
+    db.session.commit()
+    return jsonify(mod_pack_schema.dump(modpack)), 200
+
+@bp.route('/players/<int:player_id>/privileges', methods=['GET'])
+def get_privileges_for_player(player_id):
+    player = Player.query.get_or_404(player_id)
+    privileges = player.privileges
+    return jsonify(privileges_schema.dump(privileges)), 200
+
+@bp.route('/players_with_privileges', methods=['GET'])
+def get_players_with_privileges():
+    players = Player.query.all()
+    result = []
+    for player in players:
+        player_data = player_schema.dump(player)
+        player_data['privileges'] = privileges_schema.dump(player.privileges)
+        result.append(player_data)
+    return jsonify(result), 200

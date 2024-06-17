@@ -20,7 +20,7 @@ class World(db.Model):
     mod_pack_id = db.Column(db.Integer, db.ForeignKey('mod_pack.id'), nullable=True)
     mod_pack = db.relationship('ModPack', backref=db.backref('worlds', lazy=True))
     description = db.Column(db.String(255), nullable=True)
-    created_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.String(255), nullable=False)
 
 class Player(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -28,11 +28,11 @@ class Player(db.Model):
     world_id = db.Column(db.Integer, db.ForeignKey('world.id'), nullable=False)
     world = db.relationship('World', backref=db.backref('players', lazy=True))
     email = db.Column(db.String(120), unique=True, nullable=True)
-    join_date = db.Column(db.DateTime, nullable=True)
+    join_date = db.Column(db.String(255), nullable=True)
 
 class Privilege(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     player_id = db.Column(db.Integer, db.ForeignKey('player.id'), nullable=False)
-    player = db.relationship('Player', backref=db.backref('privileges', lazy=True))
+    player = db.relationship('Player', backref=db.backref('privileges', lazy=True, cascade='all, delete-orphan'))
     description = db.Column(db.String(255), nullable=True)
